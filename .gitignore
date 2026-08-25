@@ -1,0 +1,16 @@
+# Build output. Deskside builds from source with build.cmd in about a second,
+# and releases are published as GitHub Releases, so no binaries live in git.
+*.exe
+*.pdb
+*.obj
+bin/
+obj/
+
+# Windows / editor noise
+Thumbs.db
+desktop.ini
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
