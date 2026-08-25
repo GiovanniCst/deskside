@@ -4,9 +4,7 @@
 
 > 🇮🇹 Anche **[in italiano](#deskside-italiano)**.
 
-A Windows tray utility for laptops that live on a dock. It drives your external
-monitor over DDC/CI — the same commands the buttons on the monitor send — and
-stops Windows from discarding your keyboard layout every time you unlock.
+A Windows tray utility for laptops that live on a dock.
 
 No installer, no service, no dependencies. One executable, built from source in
 about a second by the C# compiler already present on every Windows machine.
@@ -21,6 +19,20 @@ English and Italian.
 Shortcuts leave a readout on screen that never steals focus:
 
 ![Deskside on-screen readout](assets/osd.png)
+
+---
+
+## Why
+
+Two annoyances, one tray icon.
+
+**The monitor.** Its brightness, contrast, input and colour settings live behind
+a joystick nub on the back of the panel. Every DDC/CI monitor exposes them to
+software — Windows just ships no interface for it.
+
+**The keyboard.** Plug in a keyboard with a different layout and Windows still
+resets to your account's default language on every lock, unlock and login.
+Deskside notices which keyboard is attached and puts the right layout back.
 
 ---
 
@@ -193,9 +205,6 @@ Created by **Giovanni J. Costantini** — [costantini.pw](https://costantini.pw)
 > 🇬🇧 Also **[in English](#deskside)**.
 
 Una utility per la tray di Windows, per i portatili che vivono in postazione.
-Pilota il monitor esterno via DDC/CI — gli stessi comandi dei pulsanti del
-monitor — e impedisce a Windows di buttare via il layout di tastiera a ogni
-sblocco.
 
 Niente installer, niente servizio, nessuna dipendenza. Un solo eseguibile,
 compilato dai sorgenti in circa un secondo dal compilatore C# già presente in
@@ -210,6 +219,20 @@ ogni installazione di Windows. Inglese e italiano.
 Le scorciatoie lasciano a schermo un indicatore che non ruba mai il fuoco:
 
 ![Indicatore di Deskside](assets/osd.png)
+
+---
+
+## Perché
+
+Due fastidi, una sola icona nella tray.
+
+**Il monitor.** Luminosità, contrasto, ingresso e colore stanno dietro a un
+levettino sul retro del pannello. Ogni monitor DDC/CI li espone via software:
+è Windows che non offre nessuna interfaccia.
+
+**La tastiera.** Colleghi una tastiera con un layout diverso e Windows continua a
+rimettere la lingua predefinita dell'account a ogni blocco, sblocco e login.
+Deskside riconosce quale tastiera è collegata e rimette il layout giusto.
 
 ---
 
