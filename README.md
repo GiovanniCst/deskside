@@ -6,6 +6,10 @@
 
 A Windows tray utility for laptops that live on a dock.
 
+**It is not tied to the hardware it was written for.** Deskside asks each
+monitor what it supports instead of assuming, so any DDC/CI display and any USB
+keyboard should work.
+
 No installer, no service, no dependencies. One executable, built from source in
 about a second by the C# compiler already present on every Windows machine.
 English and Italian.
@@ -206,6 +210,10 @@ Created by **Giovanni J. Costantini** — [costantini.pw](https://costantini.pw)
 
 Una utility per la tray di Windows, per i portatili che vivono in postazione.
 
+**Non è legato all'hardware per cui è stato scritto.** Deskside chiede a ogni
+monitor cosa supporta invece di darlo per scontato, quindi qualsiasi schermo
+DDC/CI e qualsiasi tastiera USB dovrebbero funzionare.
+
 Niente installer, niente servizio, nessuna dipendenza. Un solo eseguibile,
 compilato dai sorgenti in circa un secondo dal compilatore C# già presente in
 ogni installazione di Windows. Inglese e italiano.
@@ -214,11 +222,11 @@ ogni installazione di Windows. Inglese e italiano.
 
 | Pannello di controllo | Menu |
 |---|---|
-| ![Pannello di Deskside](assets/panel.png) | ![Menu di Deskside](assets/menu.png) |
+| ![Pannello di Deskside](assets/panel-it.png) | ![Menu di Deskside](assets/menu-it.png) |
 
 Le scorciatoie lasciano a schermo un indicatore che non ruba mai il fuoco:
 
-![Indicatore di Deskside](assets/osd.png)
+![Indicatore di Deskside](assets/osd-it.png)
 
 ---
 
