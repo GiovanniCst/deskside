@@ -80,6 +80,18 @@ hook("gdi32.dll", "D3DKMTEscape",
     function (r) { send(this.line + "  -> ret=0x" + (r.toInt32() >>> 0).toString(16) +
                         (this.size > 0 ? "  after: " + hex(this.data, this.size) : "")); });
 
+// Intel Graphics Control Library: raw I2C / DP-AUX to the monitor, the way
+// Dell Display and Peripheral Manager reaches what MCCS does not expose.
+// ctl_i2c_access_args_t: { Size u32, Version u8, DataSize u32, Address u32,
+//   OpType u32 (1=read 2=write), Offset u32, Flags u32, Data[128] }
+["ctlI2CAccess", "ctlI2CAccessOnPort", "ctlAUXAccess"].forEach(function (name) {
+    if (Process.findModuleByName("IntelControlLib.dll") === null) return;
+    hook("IntelControlLib.dll", name,
+        function (a) { this.p = a[1]; this.line = "IGCL  " + name + "  args=" + hex(this.p, 160); },
+        function (r) { send(this.line + "  -> ret=0x" + (r.toInt32() >>> 0).toString(16) +
+                            "  after=" + hex(this.p, 160)); });
+});
+
 hook("kernel32.dll", "DeviceIoControl",
     function (a) {
         this.code = a[1].toInt32() >>> 0; this.inb = a[2]; this.inn = a[3].toInt32();
