@@ -82,10 +82,18 @@ namespace Deskside
                     ReadOp r = op as ReadOp;
                     if (r != null)
                     {
-                        foreach (Op o in _queue)
+                        // A read already waiting answers this one too, but only
+                        // if no write of the same code is waiting behind it:
+                        // that read runs BEFORE the write and returns the old
+                        // value, which makes the deferred verification announce
+                        // a rejection that never happened. Scan from the back:
+                        // what matters is who comes last.
+                        for (int i = _queue.Count - 1; i >= 0; i--)
                         {
-                            ReadOp p = o as ReadOp;
-                            if (p != null && p.Code == r.Code) { p.Done += r.Done; return; }
+                            if (_queue[i] is CustomOp || _queue[i].Code != r.Code) continue;
+                            ReadOp p = _queue[i] as ReadOp;
+                            if (p != null) { p.Done += r.Done; return; }
+                            break;   // it is a write: this read must queue after it
                         }
                     }
                 }
@@ -127,14 +135,26 @@ namespace Deskside
                 lock (_lock) { old = _targets; }
                 Ddc.Release(old);
 
-                List<MonitorTarget> found = Ddc.Enumerate();
-                foreach (MonitorTarget t in found)
+                // A laptop's own panel shows up among the physical monitors but
+                // does not speak DDC/CI. Keeping it in the list means that with
+                // two screens attached there is a one-in-two chance of driving
+                // the wrong one, since the active target is always the first.
+                List<MonitorTarget> found = new List<MonitorTarget>();
+                List<MonitorTarget> mute = new List<MonitorTarget>();
+                foreach (MonitorTarget t in Ddc.Enumerate())
                 {
                     t.Capabilities = Ddc.ReadCapabilities(t.Handle);
+                    if (t.Capabilities.Length == 0 && !Ddc.Get(t.Handle, Vcp.Brightness, 1).Ok)
+                    {
+                        mute.Add(t);
+                        continue;
+                    }
                     t.Model = Vcp.Section(t.Capabilities, "model");
                     t.Mode = DisplayInfo.ForMonitor(t.HMonitor);       // no DDC involved
                     t.MonitorId = DisplayInfo.MonitorIdOf(t.HMonitor); // likewise
+                    found.Add(t);
                 }
+                Ddc.Release(mute);
                 lock (_lock)
                 {
                     _targets = found;

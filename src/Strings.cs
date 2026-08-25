@@ -182,6 +182,8 @@ namespace Deskside
             a("No monitor to save", "Nessun monitor da salvare");
             a("{0}\r\n{1} settings saved as defaults", "{0}\r\n{1} impostazioni salvate come predefinite");
             a("No profile saved for this monitor", "Nessun profilo salvato per questo monitor");
+            a("Another program is using the monitor's DDC/CI bus:\r\nthe controls found may be wrong. Close it and refresh.",
+              "Un altro programma sta usando il bus DDC/CI del monitor:\r\ni controlli trovati potrebbero essere sbagliati. Chiudilo e aggiorna.");
             a("{0}\r\nprofile applied ({1} settings)", "{0}\r\nprofilo applicato ({1} impostazioni)");
             a("{0}: the monitor refused {1}\r\nand left it at {2}",
               "{0}: il monitor ha rifiutato {1}\r\ne l'ha lasciato a {2}");
@@ -237,6 +239,19 @@ namespace Deskside
               + "writes. Use Diagnostics to test those.",
               "La scansione è di sola lettura: rispondere non significa\r\n"
               + "accettare le scritture. Per provarle usa Diagnostica.");
+            a("This monitor answers codes it does not have, by repeating its last\r\n"
+              + "valid reply. Codes whose answer is identical to the one before are\r\n"
+              + "listed apart as echoes: {0} out of 256.",
+              "Questo monitor risponde anche ai codici che non ha, ripetendo\r\n"
+              + "l'ultima risposta valida. I codici la cui risposta è identica alla\r\n"
+              + "precedente sono elencati a parte come eco: {0} su 256.");
+            a("ECHOES: SAME ANSWER AS THE CODE BEFORE, NOT REAL CONTROLS",
+              "ECO: RISPOSTA UGUALE AL CODICE PRECEDENTE, NON SONO FUNZIONI");
+
+            // --- report window ---
+            a("Copy", "Copia");
+            a("Copied", "Copiato");
+            a("Copy failed", "Non copiato");
 
             // --- shortcuts ---
             a("{0} - shortcuts", "{0} - scorciatoie");

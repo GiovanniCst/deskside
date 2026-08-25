@@ -200,6 +200,7 @@ namespace Deskside
         Label _hint;
         Label _header;
         bool _isLenovo;
+        bool _echoes;                  // the monitor answers codes it does not have
         bool _loading;
         string _title = "Monitor";
         string _mode = "";
@@ -421,71 +422,259 @@ namespace Deskside
 
                 Dictionary<byte, List<int>> declared = Vcp.ParseVcp(t.Capabilities);
                 _isLenovo = t.MonitorId.StartsWith("LEN", StringComparison.OrdinalIgnoreCase);
+                List<byte> candidates = Candidates(_isLenovo);
 
-                List<byte> candidates = new List<byte>();
-                candidates.AddRange(SliderCandidates);
-                foreach (byte cc in ChoiceCandidates)
-                    if (_isLenovo || Array.IndexOf(LenovoOnly, cc) < 0) candidates.Add(cc);
+                _worker.Run(delegate
+                {
+                    MonitorTarget cur = _worker.Active;
+                    if (cur == null) return;
 
-                _features.Clear();
-                Probe(candidates, declared, 0);
+                    bool echoes, contended;
+                    Dictionary<byte, int> values;
+                    List<FeatureDef> found = ProbeFeatures(cur.Handle, candidates, declared,
+                                                           out echoes, out values, out contended);
+                    _worker.Post(delegate
+                    {
+                        _echoes = echoes;
+                        _features.Clear();
+                        _features.AddRange(found);
+                        foreach (KeyValuePair<byte, int> kv in values) _cache[kv.Key] = kv.Value;
+                        BuildPanel();
+                        ApplyProfileIfNewMonitor();
+                        // Better to say so than to show a panel that was
+                        // assembled from someone else's replies.
+                        if (contended)
+                            _osd.Flash(L.T("Another program is using the monitor's DDC/CI bus:\r\n" +
+                                           "the controls found may be wrong. Close it and refresh."));
+                    });
+                });
             });
         }
 
-        /// <summary>
-        /// Asks each candidate code and keeps the ones the monitor answers. A
-        /// dropped read used to make a control vanish silently: right after a
-        /// video mode change the monitor re-locks the signal and the DDC bus
-        /// misses beats, so failures get one more attempt.
-        /// </summary>
-        void Probe(List<byte> pending, Dictionary<byte, List<int>> declared, int attempt)
+        /// <summary>Codes to probe, in the order they appear in the panel.</summary>
+        internal static List<byte> Candidates(bool isLenovo)
         {
-            List<byte> failed = new List<byte>();
+            List<byte> candidates = new List<byte>();
+            candidates.AddRange(SliderCandidates);
+            foreach (byte cc in ChoiceCandidates)
+                if (isLenovo || Array.IndexOf(LenovoOnly, cc) < 0) candidates.Add(cc);
+            return candidates;
+        }
 
-            foreach (byte code in pending)
+        /// <summary>
+        /// A reserved VCP code no monitor implements, used as a sentinel to
+        /// recognise the monitors that answer everything.
+        /// </summary>
+        const byte Sentinel = 0x33;
+
+        /// <summary>Shown at the top of the scan when the monitor answers everything.</summary>
+        const string EchoNote =
+            "This monitor answers codes it does not have, by repeating its last\r\n" +
+            "valid reply. Codes whose answer is identical to the one before are\r\n" +
+            "listed apart as echoes: {0} out of 256.";
+
+        /// <summary>
+        /// Asks each candidate code and keeps the ones the monitor really has.
+        ///
+        /// "It answered, so it exists" does not hold on every monitor. The Dell
+        /// S2719DGF answers ANY code, including ones that do not exist, by
+        /// repeating its last valid reply. Taken at face value it claims to
+        /// have everything, and the invented controls then sit there empty,
+        /// because the value read matches none of the choices offered.
+        ///
+        /// If the sentinel answers we are on such a monitor, and a stricter
+        /// rule applies: a code is real only if its reply differs from the last
+        /// one received. The sentinel need not be re-read each time — after any
+        /// read the echo is that reply — so the cost stays one read per code.
+        ///
+        /// One case stays ambiguous: a real code whose value happens to equal
+        /// the echo. It is re-checked by priming the echo with an already
+        /// promoted code of a different value; with none yet promoted, the
+        /// capability string decides.
+        ///
+        /// Runs on the DDC thread: reads are sequential here, and each reply is
+        /// needed to interpret the next.
+        /// </summary>
+        internal static List<FeatureDef> ProbeFeatures(IntPtr h, List<byte> candidates,
+                                                       Dictionary<byte, List<int>> declared,
+                                                       out bool echoes, out Dictionary<byte, int> values)
+        {
+            bool contended;
+            return ProbeFeatures(h, candidates, declared, out echoes, out values, out contended);
+        }
+
+        /// <summary>How many times a probe disturbed by another bus user is redone.</summary>
+        const int ProbeAttempts = 3;
+
+        /// <summary>Sentinel reads at the end of a probe, to catch another bus user.</summary>
+        const int ContentionReads = 3;
+
+        /// <param name="contended">
+        /// True when every attempt found another program on the bus, so the
+        /// result is the last attempt's and may list controls that are not there.
+        /// </param>
+        internal static List<FeatureDef> ProbeFeatures(IntPtr h, List<byte> candidates,
+                                                       Dictionary<byte, List<int>> declared,
+                                                       out bool echoes, out Dictionary<byte, int> values,
+                                                       out bool contended)
+        {
+            List<FeatureDef> found = null;
+            echoes = false; values = null; contended = false;
+            for (int attempt = 0; attempt < ProbeAttempts; attempt++)
             {
-                byte c = code;
-                bool isChoice = Array.IndexOf(ChoiceCandidates, c) >= 0;
-                _worker.Read(c, delegate(VcpValue v)
+                if (attempt > 0) System.Threading.Thread.Sleep(500);
+                found = ProbeOnce(h, candidates, declared, out echoes, out values, out contended);
+                if (!contended) break;
+            }
+            return found;
+        }
+
+        static List<FeatureDef> ProbeOnce(IntPtr h, List<byte> candidates,
+                                          Dictionary<byte, List<int>> declared,
+                                          out bool echoes, out Dictionary<byte, int> values,
+                                          out bool contended)
+        {
+            List<FeatureDef> found = new List<FeatureDef>();
+            List<VcpValue> real = new List<VcpValue>();   // promoted, used to prime the echo
+            values = new Dictionary<byte, int>();
+            contended = false;
+
+            // Read with the usual retries: a single dropped packet here — and
+            // the probe runs right after a mode change, when packets do drop —
+            // would pass an echoing monitor off as honest, and every candidate
+            // would be promoted.
+            VcpValue echo = Ddc.Get(h, Sentinel);
+            echoes = echo.Ok;
+
+            List<byte> pending = new List<byte>(candidates);
+            List<byte> failed = new List<byte>();
+            List<byte> deferred = new List<byte>();
+
+            // Pass 0 asks every candidate; pass 1 retries the reads that
+            // dropped; pass 2 comes back to the ambiguous codes, by then with
+            // promoted codes to prime the echo with.
+            for (int pass = 0; pass < 3; pass++)
+            {
+                if (pass == 1)
                 {
-                    if (!v.Ok) { failed.Add(c); return; }
-                    _cache[c] = v.Current;
+                    // A dropped read used to make a control vanish silently:
+                    // right after a video mode change the monitor re-locks the
+                    // signal and the DDC bus misses beats, so failures get one
+                    // more attempt.
+                    if (failed.Count == 0) continue;
+                    pending = failed;
+                    System.Threading.Thread.Sleep(400);   // let the bus breathe
+                }
+                else if (pass == 2)
+                {
+                    if (deferred.Count == 0) break;
+                    pending = deferred;
+                }
 
-                    FeatureDef f = new FeatureDef();
-                    f.Code = c;
-                    f.Label = LabelOf(c);
-                    f.IsChoice = isChoice;
-                    f.Maximum = v.Maximum;
-                    if (isChoice)
+                foreach (byte c in pending)
+                {
+                    VcpValue v = Ddc.Get(h, c);
+                    if (!v.Ok) { if (pass == 0) failed.Add(c); continue; }
+
+                    bool genuine = true;
+                    if (echoes && SameReply(v, echo))
                     {
-                        List<int> vals;
-                        if (declared.TryGetValue(c, out vals) && vals.Count > 1)
-                            foreach (int val in vals)
-                                f.Choices.Add(new KeyValuePair<int, string>(val, Vcp.ValueName(c, val)));
-                        else
-                            f.Choices = Vcp.Known(c);
-                        if (f.Choices.Count < 2) return;   // one option is not a choice
+                        VcpValue primer = FirstDifferent(real, v);
+                        if (primer.Ok)
+                        {
+                            Ddc.Get(h, primer.Code);      // the echo is now its reply
+                            echo = primer;
+                            v = Ddc.Get(h, c);
+                            genuine = v.Ok && !SameReply(v, echo);
+                        }
+                        else if (pass < 2)
+                        {
+                            // Nothing promoted yet to tell a real code from the
+                            // echo: come back to it once there is.
+                            deferred.Add(c);
+                            continue;
+                        }
+                        else genuine = declared.ContainsKey(c);   // nothing at all was promoted
                     }
-                    else if (v.Maximum <= 0) return;
+                    if (v.Ok) echo = v;
+                    if (!genuine) continue;
 
-                    _features.Add(f);
-                });
+                    FeatureDef f = MakeFeature(c, v, declared);
+                    if (f == null) continue;
+                    found.Add(f);
+                    real.Add(v);
+                    values[c] = Current(c, v);
+                }
             }
 
-            // queued after the reads: the queue is FIFO, so by now they are done
-            _worker.Run(delegate
+            // With the bus to ourselves the echo is exactly the last valid
+            // reply we received. If the sentinel now says otherwise, another
+            // program read the monitor in the meantime — and it made every
+            // reply look "different from the one before", promoting codes
+            // that do not exist. A single read can miss it — the other
+            // program may just have asked the same code we did — so the
+            // sentinel is read a few times: any mismatch is proof.
+            if (echoes)
             {
-                if (attempt == 0) System.Threading.Thread.Sleep(400);   // let the bus breathe
-                _worker.Post(delegate
+                for (int i = 0; i < ContentionReads && !contended; i++)
                 {
-                    if (failed.Count > 0 && attempt == 0) Probe(failed, declared, 1);
-                    else
-                    {
-                        BuildPanel();
-                        ApplyProfileIfNewMonitor();
-                    }
-                });
+                    VcpValue after = Ddc.Get(h, Sentinel);
+                    contended = after.Ok && !SameReply(after, echo);
+                }
+            }
+
+            // Deferred codes were promoted out of order: the panel follows
+            // the candidate order.
+            found.Sort(delegate(FeatureDef a, FeatureDef b)
+            {
+                return candidates.IndexOf(a.Code).CompareTo(candidates.IndexOf(b.Code));
             });
+            return found;
+        }
+
+        static bool SameReply(VcpValue a, VcpValue b)
+        {
+            return a.Ok && b.Ok && a.Current == b.Current && a.Maximum == b.Maximum;
+        }
+
+        static VcpValue FirstDifferent(List<VcpValue> known, VcpValue v)
+        {
+            foreach (VcpValue k in known) if (!SameReply(k, v)) return k;
+            return VcpValue.Fail(0);
+        }
+
+        static FeatureDef MakeFeature(byte c, VcpValue v, Dictionary<byte, List<int>> declared)
+        {
+            FeatureDef f = new FeatureDef();
+            f.Code = c;
+            f.Label = LabelOf(c);
+            f.IsChoice = IsChoice(c);
+            f.Maximum = v.Maximum;
+            if (f.IsChoice)
+            {
+                List<int> vals;
+                if (declared.TryGetValue(c, out vals) && vals.Count > 1)
+                    foreach (int val in vals)
+                        f.Choices.Add(new KeyValuePair<int, string>(val, Vcp.ValueName(c, val)));
+                else
+                    f.Choices = Vcp.Known(c);
+                if (f.Choices.Count < 2) return null;   // one option is not a choice
+            }
+            else if (v.Maximum <= 0) return null;
+            return f;
+        }
+
+        static bool IsChoice(byte code) { return Array.IndexOf(ChoiceCandidates, code) >= 0; }
+
+        /// <summary>
+        /// The value read, normalised. On non-continuous codes the value lives
+        /// in the low byte: the high byte is reserved and some monitors fill it
+        /// in anyway (the Dell answers 0x1212 for HDMI 2). Without the mask no
+        /// choice matches and the dropdown stays empty.
+        /// </summary>
+        static int Current(byte code, VcpValue v)
+        {
+            return IsChoice(code) ? (v.Current & 0xFF) : v.Current;
         }
 
         // ------------------------------------------------------------ panel --
@@ -696,8 +885,14 @@ namespace Deskside
                 byte code = f.Code;
                 _worker.Read(code, delegate(VcpValue v)
                 {
-                    if (!v.Ok) return;
-                    _cache[code] = v.Current;
+                    // A read queued before a write of the same code runs
+                    // first, legitimately, and comes back with the old value.
+                    // Letting it overwrite the cache made the slider jump back
+                    // and the deferred verification compare the monitor against
+                    // a value nobody asked for any more. VerifyDirty owns the
+                    // code until it has checked it.
+                    if (!v.Ok || _dirty.Contains(code)) return;
+                    _cache[code] = Current(code, v);
                     Apply(code, v);
                 });
             }
@@ -718,13 +913,14 @@ namespace Deskside
                 if (_combos.TryGetValue(code, out box))
                 {
                     FeatureDef f = (FeatureDef)box.Tag;
+                    int cur = Current(code, v);
                     for (int i = 0; i < f.Choices.Count; i++)
-                        if (f.Choices[i].Key == v.Current) { box.SelectedIndex = i; break; }
+                        if (f.Choices[i].Key == cur) { box.SelectedIndex = i; break; }
                 }
             }
             finally { _loading = false; }
 
-            if (code == Vcp.DynamicContrast && _isLenovo) ApplyDcrLock(v.Current == 1);
+            if (code == Vcp.DynamicContrast && _isLenovo) ApplyDcrLock(Current(code, v) == 1);
         }
 
         /// <summary>
@@ -833,11 +1029,12 @@ namespace Deskside
                 int want = wanted;
                 _worker.Read(c, delegate(VcpValue v)
                 {
-                    if (!v.Ok || v.Current == want) return;
-                    _cache[c] = v.Current;
+                    int got = Current(c, v);
+                    if (!v.Ok || got == want) return;
+                    _cache[c] = got;
                     Apply(c, v);
                     _osd.Flash(L.F("{0}: the monitor refused {1}\r\nand left it at {2}",
-                                   LabelOf(c), want, v.Current));
+                                   LabelOf(c), want, got));
                 });
             }
         }
@@ -947,8 +1144,7 @@ namespace Deskside
             more.DropDownItems.Add(Item(L.T("Full VCP scan..."), delegate { ShowFullScan(); }, false));
             more.DropDownItems.Add(Item(L.T("Keyboard shortcuts"), delegate
             {
-                MessageBox.Show(HotkeyHelp(),
-                                L.F("{0} - shortcuts", AppInfo.Name), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ReportForm.Open(L.F("{0} - shortcuts", AppInfo.Name), HotkeyHelp(), _icon);
             }, false));
             ToolStripMenuItem lang = new ToolStripMenuItem(L.T("Language"));
             foreach (KeyValuePair<string, string> opt in L.Available)
@@ -1034,8 +1230,7 @@ namespace Deskside
                 _worker.Post(delegate
                 {
                     RefreshValues();
-                    MessageBox.Show(sb.ToString(), L.F("{0} - diagnostics", AppInfo.Name),
-                                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    ReportForm.Open(L.F("{0} - diagnostics", AppInfo.Name), sb.ToString(), _icon);
                 });
             });
         }
@@ -1060,40 +1255,63 @@ namespace Deskside
                 Dictionary<byte, List<int>> declared = Vcp.ParseVcp(t.Capabilities);
                 StringBuilder inPanel = new StringBuilder();
                 StringBuilder extra = new StringBuilder();
-                int total = 0;
+                StringBuilder echoed = new StringBuilder();
+                int total = 0, fake = 0;
+
+                // If it answers a reserved code too, every one of its answers
+                // has to be read for what it is: a repeat of the last valid one.
+                VcpValue echo = Ddc.Get(t.Handle, Sentinel, 1);
+                bool echoes = echo.Ok;
 
                 for (int i = 0; i <= 255; i++)
                 {
                     byte c = (byte)i;
                     VcpValue v = Ddc.Get(t.Handle, c, 1);   // one attempt only: there are 256
                     if (!v.Ok) continue;
-                    total++;
+
+                    bool isEcho = echoes && SameReply(v, echo);
+                    echo = v;
 
                     string name = Vcp.MccsName(c);
                     if (name.Length == 0) name = L.T(declared.ContainsKey(c) ? "(vendor, declared)" : "(unknown)");
                     string line = string.Format("  0x{0:X2}  {1,-28} {2,6} / {3}\r\n",
                                                 c, name, v.Current, v.Maximum);
-                    if (shown.Contains(c)) inPanel.Append(line); else extra.Append(line);
+                    if (isEcho) { fake++; echoed.Append(line); }
+                    else
+                    {
+                        total++;
+                        if (shown.Contains(c)) inPanel.Append(line); else extra.Append(line);
+                    }
                 }
 
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine(_title + "   (" + t.MonitorId + ")");
                 sb.AppendLine(L.F("declared by the monitor: {0}   -   actually answering: {1}",
                                   declared.Count, total));
+                if (echoes)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine(L.F(EchoNote, fake));
+                }
                 sb.AppendLine();
                 sb.AppendLine(L.T("ALREADY IN THE PANEL"));
                 sb.Append(inPanel.Length > 0 ? inPanel.ToString() : L.T("  none\r\n"));
                 sb.AppendLine();
                 sb.AppendLine(L.T("ANSWERING BUT NOT IN THE PANEL"));
                 sb.Append(extra.Length > 0 ? extra.ToString() : L.T("  none\r\n"));
+                if (echoed.Length > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine(L.T("ECHOES: SAME ANSWER AS THE CODE BEFORE, NOT REAL CONTROLS"));
+                    sb.Append(echoed.ToString());
+                }
                 sb.AppendLine();
                 sb.AppendLine(L.T("The scan is read-only: answering does not mean accepting\r\n"
                                 + "writes. Use Diagnostics to test those."));
 
                 _worker.Post(delegate
                 {
-                    MessageBox.Show(sb.ToString(), L.F("{0} - full VCP scan", AppInfo.Name),
-                                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    ReportForm.Open(L.F("{0} - full VCP scan", AppInfo.Name), sb.ToString(), _icon);
                 });
             });
         }

@@ -138,9 +138,13 @@ name=ThinkVision E27-40
 about **60 ms**, and no cleverness makes it faster; a full panel refresh is a
 dozen reads. So all bus traffic runs on one background thread, writes to the same
 code coalesce (drag a slider and only the value you land on is sent), queued
-reads for the same code merge, and controls move immediately and correct
-themselves when the answer arrives. Shortcuts work from the cache rather than
-reading first, which is why they feel instant.
+reads for the same code merge — but never across a write of that code still
+waiting, or the verification would read the old value and cry rejection over a
+command that worked — and controls move immediately and correct themselves when
+the answer arrives. The mirror case is covered too: a refresh read queued
+*before* your write comes back with the old value, legitimately, and is not
+allowed to drag the slider back while the verification is pending. Shortcuts
+work from the cache rather than reading first, which is why they feel instant.
 
 **Monitors lie about what they support.** The ThinkVision this was written
 against declares 30 VCP codes and answers to 43 — sharpness, mute and the three
@@ -148,6 +152,33 @@ black-level controls all work while going undeclared. Hence probing rather than
 trusting the declared list. *More → Full VCP scan* sweeps all 256 codes read-only
 and reports what answers; *Diagnostics* goes further and tests which ones accept
 writes, restoring the original value.
+
+**And some monitors answer everything.** A Dell S2719DGF replies to all 256
+codes, including ones that do not exist, by repeating its last valid reply. Taken
+at face value it owns every control in the standard, and the invented ones then
+sit in the panel empty, because the value read belongs to another code. So before
+probing, Deskside reads a reserved sentinel code. If that answers, a stricter
+rule applies for this monitor: a code is real only if its reply differs from the
+last one received. It costs no extra reads — after any read the echo is that
+reply — and on an honest monitor nothing changes. The full scan lists the echoes
+separately rather than counting them as features.
+
+Two corners of that rule. A real code whose value happens to equal the echo —
+three RGB gains at 100 in a row — is re-asked after priming the echo with a code
+already promoted; if none has been yet, it is set aside and re-asked at the end
+instead of guessed. And another program reading the monitor at the same time
+(Dell Display Manager, a measurement script) changes the echo under Deskside's
+feet, so every code looks "different from the one before" and gets promoted.
+Since the echo is by definition the last valid reply, the sentinel is re-read
+when the probe ends: if it does not match, someone else is on the bus, the probe
+is redone, and after three tries Deskside says so rather than show a panel built
+from someone else's answers.
+
+**One more thing that trips up dropdowns.** On non-continuous codes the value
+lives in the low byte; the high byte is reserved, and some monitors fill it in
+anyway. That Dell answers `0x1212` for HDMI 2 — the right answer, `0x12`, sent
+twice. Unmasked, no entry in the list matches and the box stays blank even for a
+control the monitor really has.
 
 **A monitor can accept a command and ignore it.** That is a mode in its own menu
 holding the control fixed — on the E27-40, Dynamic Contrast freezes brightness
@@ -179,8 +210,8 @@ timings, not the detailed timings where the high rates live. Deskside uses
 
 ## Compatibility
 
-Written against a Lenovo ThinkVision E27-40 and a Durgod Taurus K320, but nothing
-is specific to them beyond the vendor codes above. Any DDC/CI monitor and any USB
+Written against a Lenovo ThinkVision E27-40, a Dell S2719DGF and a Durgod Taurus
+K320, but nothing is specific to them beyond the vendor codes above. Any DDC/CI monitor and any USB
 keyboard should work, since the whole design asks the hardware rather than
 assuming. Reports from other hardware — especially the output of *Full VCP scan* —
 are welcome in the issues.
@@ -343,9 +374,14 @@ costa circa **60 ms**, e nessuna astuzia lo accelera; un aggiornamento completo
 del pannello sono una dozzina di letture. Perciò tutto il traffico sta su un
 thread di lavoro, le scritture sullo stesso codice si fondono (trascini un
 cursore e parte solo il valore su cui ti fermi), le letture in coda per lo stesso
-codice si uniscono, e i controlli si muovono subito correggendosi quando arriva
-la risposta. Le scorciatoie partono dalla cache invece di rileggere: per questo
-rispondono all'istante.
+codice si uniscono — mai però scavalcando una scrittura di quel codice ancora in
+attesa, altrimenti la verifica leggerebbe il valore vecchio e griderebbe al
+rifiuto per un comando riuscito — e i controlli si muovono subito correggendosi
+quando arriva la risposta. Vale anche il caso speculare: una lettura di
+aggiornamento accodata *prima* della tua scrittura torna col valore vecchio,
+legittimamente, e non le è permesso riportare indietro il cursore finché la
+verifica è in sospeso. Le scorciatoie partono dalla cache invece di rileggere:
+per questo rispondono all'istante.
 
 **I monitor mentono su cosa supportano.** Il ThinkVision su cui è nato ne
 dichiara 30 di codici VCP e ne risponde 43: nitidezza, muto e i tre livelli del
@@ -353,6 +389,34 @@ nero funzionano pur non essendo dichiarati. Da qui la scelta di interrogare inve
 di fidarsi. *Altro → Scansione completa* passa tutti e 256 i codici in sola
 lettura e riporta cosa risponde; *Diagnostica* va oltre e prova quali accettano
 le scritture, ripristinando il valore originale.
+
+**E qualcuno risponde a tutto.** Un Dell S2719DGF risponde a tutti e 256 i
+codici, anche a quelli che non esistono, ripetendo l'ultima risposta valida.
+Preso alla lettera possiede ogni controllo dello standard, e quelli inventati
+restano poi vuoti nel pannello, perché il valore letto appartiene a un altro
+codice. Perciò prima di sondare Deskside legge un codice sentinella riservato. Se
+quello risponde, per quel monitor vale una regola più stretta: un codice è reale
+solo se la sua risposta è diversa dall'ultima ricevuta. Non costa letture in più
+— dopo una lettura l'eco è quella risposta — e su un monitor onesto non cambia
+nulla. La scansione completa elenca le eco a parte invece di contarle come
+funzioni.
+
+Due angoli di quella regola. Un codice reale il cui valore coincide per caso con
+l'eco — tre guadagni RGB a 100 di fila — viene richiesto dopo aver innescato
+l'eco con un codice già promosso; se non ce n'è ancora nessuno, viene messo da
+parte e richiesto alla fine invece di tirare a indovinare. E un altro programma
+che legge il monitor nello stesso momento (Dell Display Manager, uno script di
+misura) cambia l'eco sotto i piedi di Deskside: ogni codice sembra «diverso dal
+precedente» e viene promosso. Siccome l'eco è per definizione l'ultima risposta
+valida, a fine sondaggio la sentinella viene riletta: se non coincide, qualcuno
+è sul bus, il sondaggio si ripete, e dopo tre tentativi Deskside lo dice invece
+di mostrare un pannello costruito sulle risposte di un altro.
+
+**Un'altra cosa che svuota gli elenchi.** Sui codici non continui il valore sta
+nel byte basso; il byte alto è riservato, e c'è chi lo riempie lo stesso. Quel
+Dell risponde `0x1212` per HDMI 2: la risposta giusta, `0x12`, mandata due volte.
+Senza mascherarlo nessuna voce dell'elenco corrisponde, e la casella resta vuota
+anche per un controllo che il monitor ha davvero.
 
 **Un monitor può accettare un comando e ignorarlo.** È una modalità del suo menu
 che tiene fisso quel controllo: sull'E27-40 il Dynamic Contrast congela
@@ -386,7 +450,8 @@ timing dove stanno le frequenze alte. Deskside usa `EnumDisplaySettings`.
 
 ## Compatibilità
 
-Nato su un Lenovo ThinkVision E27-40 e una Durgod Taurus K320, ma niente è
+Nato su un Lenovo ThinkVision E27-40, un Dell S2719DGF e una Durgod Taurus K320,
+ma niente è
 specifico di quei due oltre ai codici vendor di cui sopra. Qualsiasi monitor
 DDC/CI e qualsiasi tastiera USB dovrebbero funzionare, visto che tutto il
 progetto chiede all'hardware invece di dare per scontato. Segnalazioni da altro
