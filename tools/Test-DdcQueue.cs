@@ -80,7 +80,7 @@ namespace Deskside
             // path the application uses.
             bool echoes, contended; Dictionary<byte, int> values;
             List<FeatureDef> feats = TrayApp.ProbeFeatures(
-                m.Handle, TrayApp.Candidates(m.MonitorId.StartsWith("LEN", StringComparison.OrdinalIgnoreCase)),
+                m.Handle, TrayApp.Candidates(m.MonitorId.StartsWith("LEN", StringComparison.OrdinalIgnoreCase), m.MonitorId.StartsWith("DEL", StringComparison.OrdinalIgnoreCase)),
                 Vcp.ParseVcp(m.Capabilities), out echoes, out values, out contended);
             Console.WriteLine("answers-everything monitor: " + echoes);
             Console.WriteLine("another program on the bus: " + contended);

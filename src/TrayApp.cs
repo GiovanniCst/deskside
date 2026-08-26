@@ -139,7 +139,7 @@ namespace Deskside
             Vcp.RedBlack, Vcp.GreenBlack, Vcp.BlueBlack
         };
         static readonly byte[] ChoiceCandidates = {
-            Vcp.Input, Vcp.Preset, Vcp.DynamicContrast, Vcp.OverDrive,
+            Vcp.Input, Vcp.Preset, Vcp.DellPreset, Vcp.DynamicContrast, Vcp.OverDrive,
             Vcp.Scaling, Vcp.Mute, Vcp.OsdLanguage
         };
         // 0xE0 and 0xEA are not standard, they are vendor codes. On a Lenovo they
@@ -147,6 +147,30 @@ namespace Deskside
         // another brand the same numbers could mean anything, so they are only
         // offered on Lenovo panels.
         static readonly byte[] LenovoOnly = { Vcp.OverDrive, Vcp.DynamicContrast };
+        // 0xE2 is Dell's: it reports the OSD preset mode. Offered on Dell panels only.
+        static readonly byte[] DellOnly = { Vcp.DellPreset };
+
+        /// <summary>
+        /// How a Dell preset is set. 0xE2 only reports; writing it is accepted
+        /// and ignored. Found by sniffing Dell Display and Peripheral Manager
+        /// (tools\Sniff-Ddc.py): Standard and Game 1 go through the standard
+        /// Display Application code, the game modes and ComfortView through
+        /// vendor 0xF0, the colour ones through the standard colour preset.
+        /// Rows: { value 0xE2 reports, code to write, value to write }.
+        /// </summary>
+        static readonly int[,] DellPresetWrite = {
+            { 0x00, 0xDC, 0x00 },   // Standard
+            { 0x04, 0xDC, 0x05 },   // Game 1
+            { 0x1E, 0xF0, 0x0D },   // Game 2
+            { 0x1F, 0xF0, 0x0E },   // Game 3
+            { 0x1D, 0xF0, 0x0C },   // ComfortView
+            { 0x22, 0xF0, 0x11 },   // FPS
+            { 0x21, 0xF0, 0x10 },   // RPG
+            { 0x20, 0xF0, 0x0F },   // RTS
+            { 0x12, 0x14, 0x08 },   // Cool
+            { 0x0E, 0x14, 0x0B },   // Warm
+            { 0x14, 0x14, 0x0C },   // Custom Color
+        };
 
         static string LabelOf(byte code) { return L.T(LabelEn(code)); }
 
@@ -168,6 +192,7 @@ namespace Deskside
                 case Vcp.BlueBlack: return "Blue black";
                 case Vcp.Input: return "Input";
                 case Vcp.Preset: return "Colour preset";
+                case Vcp.DellPreset: return "Preset";
                 case Vcp.Scaling: return "Scaling";
                 case Vcp.Mute: return "Audio";
                 case Vcp.OsdLanguage: return "OSD language";
@@ -200,6 +225,7 @@ namespace Deskside
         Label _hint;
         Label _header;
         bool _isLenovo;
+        bool _isDell;
         bool _echoes;                  // the monitor answers codes it does not have
         bool _loading;
         string _title = "Monitor";
@@ -422,7 +448,8 @@ namespace Deskside
 
                 Dictionary<byte, List<int>> declared = Vcp.ParseVcp(t.Capabilities);
                 _isLenovo = t.MonitorId.StartsWith("LEN", StringComparison.OrdinalIgnoreCase);
-                List<byte> candidates = Candidates(_isLenovo);
+                _isDell = t.MonitorId.StartsWith("DEL", StringComparison.OrdinalIgnoreCase);
+                List<byte> candidates = Candidates(_isLenovo, _isDell);
 
                 _worker.Run(delegate
                 {
@@ -452,12 +479,16 @@ namespace Deskside
         }
 
         /// <summary>Codes to probe, in the order they appear in the panel.</summary>
-        internal static List<byte> Candidates(bool isLenovo)
+        internal static List<byte> Candidates(bool isLenovo, bool isDell)
         {
             List<byte> candidates = new List<byte>();
             candidates.AddRange(SliderCandidates);
             foreach (byte cc in ChoiceCandidates)
-                if (isLenovo || Array.IndexOf(LenovoOnly, cc) < 0) candidates.Add(cc);
+            {
+                if (!isLenovo && Array.IndexOf(LenovoOnly, cc) >= 0) continue;
+                if (!isDell && Array.IndexOf(DellOnly, cc) >= 0) continue;
+                candidates.Add(cc);
+            }
             return candidates;
         }
 
@@ -705,6 +736,7 @@ namespace Deskside
             }
 
             AddRefreshRow(ref top);
+            AddOrientationRow(ref top);
 
             _hint = new Label();
             _hint.Location = new Point(10, top);
@@ -811,7 +843,7 @@ namespace Deskside
                 if (_loading || box.SelectedIndex < 0) return;
                 int value = f.Choices[box.SelectedIndex].Key;
                 _cache[code] = value;
-                _worker.Write(code, value);
+                WriteFeature(code, value);
                 MarkDirty(code);
                 // changing preset or Dynamic Contrast frees or freezes other controls
                 RefreshValues();
@@ -865,6 +897,76 @@ namespace Deskside
             _panel.Controls.Add(l);
             _panel.Controls.Add(box);
             top += 28;
+        }
+
+        static readonly string[] OrientationNames = {
+            "Landscape", "Portrait", "Landscape (flipped)", "Portrait (flipped)"
+        };
+
+        /// <summary>
+        /// Desktop orientation, the four entries of the Windows display
+        /// settings. Like the refresh rate it is not a DDC/CI control: Windows
+        /// rotates the picture, the monitor knows nothing about it. It is
+        /// saved in the profile, because a monitor that stands upright on one
+        /// desk should come back upright when it is plugged in again.
+        /// </summary>
+        void AddOrientationRow(ref int top)
+        {
+            if (!_modeInfo.Valid) return;
+
+            Label l = new Label();
+            l.Text = L.T("Orientation");
+            l.Location = new Point(10, top + 4);
+            l.Size = new Size(112, 18);
+
+            ComboBox box = new ComboBox();
+            box.Location = new Point(122, top);
+            box.Size = new Size(208, 22);
+            box.DropDownStyle = ComboBoxStyle.DropDownList;
+            foreach (string name in OrientationNames) box.Items.Add(L.T(name));
+            box.SelectedIndex = Math.Max(0, Math.Min(3, _modeInfo.Orientation));
+
+            box.SelectedIndexChanged += delegate
+            {
+                if (_loading || box.SelectedIndex < 0) return;
+                int o = box.SelectedIndex;
+                if (o == _modeInfo.Orientation) return;
+                string err = DisplayInfo.SetOrientation(_modeInfo.Device, o);
+                if (err == null) _osd.Flash(L.F("Orientation: {0}", L.T(OrientationNames[o])));
+                else
+                {
+                    _osd.Flash(L.F("Rotation refused\r\n{0}", err));
+                    _loading = true;
+                    box.SelectedIndex = _modeInfo.Orientation;
+                    _loading = false;
+                }
+                // the mode change triggers a fresh Discover on its own
+            };
+
+            _panel.Controls.Add(l);
+            _panel.Controls.Add(box);
+            top += 28;
+        }
+
+        /// <summary>
+        /// Queues a write for a control. Almost always the code itself; the
+        /// Dell preset is the exception, where the reported code is read-only
+        /// and the choice goes to a different register (see DellPresetWrite).
+        /// The verification still reads 0xE2 back, which is what changes.
+        /// </summary>
+        void WriteFeature(byte code, int value)
+        {
+            if (code == Vcp.DellPreset)
+            {
+                for (int i = 0; i < DellPresetWrite.GetLength(0); i++)
+                    if (DellPresetWrite[i, 0] == value)
+                    {
+                        _worker.Write((byte)DellPresetWrite[i, 1], DellPresetWrite[i, 2]);
+                        return;
+                    }
+                return;   // a value we have no recipe for: better nothing than a wrong register
+            }
+            _worker.Write(code, value);
         }
 
         void AddButton(string text, int x, int y, Action click)
@@ -963,7 +1065,7 @@ namespace Deskside
             // Order matters: with Dynamic Contrast on, brightness and contrast
             // would be ignored, and the colour preset constrains the colour
             // temperature, so those two go first.
-            byte[] first = { Vcp.DynamicContrast, Vcp.Preset };
+            byte[] first = { Vcp.DynamicContrast, Vcp.Preset, Vcp.DellPreset };
             List<byte> order = new List<byte>();
             foreach (byte c in first) if (p.Values.ContainsKey(c)) order.Add(c);
             foreach (KeyValuePair<byte, int> kv in p.Values)
@@ -974,8 +1076,12 @@ namespace Deskside
                 byte c = code;
                 int v = p.Values[c];
                 _cache[c] = v;
-                _worker.Write(c, v);
+                WriteFeature(c, v);
             }
+            // Orientation is Windows' business, not the monitor's: it does not
+            // go through the queue. The mode change makes Discover run again.
+            if (p.Orientation >= 0 && _modeInfo.Valid && p.Orientation != _modeInfo.Orientation)
+                DisplayInfo.SetOrientation(_modeInfo.Device, p.Orientation);
             _worker.Run(delegate { _worker.Post(delegate
             {
                 RefreshValues();
@@ -997,6 +1103,7 @@ namespace Deskside
                 int v;
                 if (_cache.TryGetValue(f.Code, out v)) p.Values[f.Code] = v;
             }
+            p.Orientation = _modeInfo.Valid ? _modeInfo.Orientation : -1;
             SettingsStore.Save(p);
             _appliedKey = _monitorKey;
             _osd.Flash(L.F("{0}\r\n{1} settings saved as defaults", _title, p.Values.Count));

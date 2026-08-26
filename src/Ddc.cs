@@ -158,6 +158,10 @@ namespace Deskside
                           // Lenovo vendor codes, identified by experiment: with
                           // DynamicContrast on, brightness and contrast are frozen.
                           OverDrive = 0xE0, DynamicContrast = 0xEA,
+                          // Dell vendor code: reports the OSD preset mode (Standard, FPS,
+                          // Game 1...). Read-only; the preset is SET through 0xDC, 0xF0
+                          // or 0x14 depending on the target, see TrayApp.DellPresetWrite.
+                          DellPreset = 0xE2,
                           ResetAll = 0x04, ResetBrightness = 0x05, ResetColor = 0x08,
                           Firmware = 0xC9, VRefresh = 0xAE, Technology = 0xB6, SubPixel = 0xB2;
 
@@ -191,6 +195,11 @@ namespace Deskside
             Add(Power, 0x01, "on", 0x02, "standby", 0x03, "suspend", 0x04, "off", 0x05, "hard off");
             Add(OverDrive, 0x00, "off", 0x01, "normal", 0x02, "max");
             Add(DynamicContrast, 0x00, "off", 0x01, "on");
+            // Values as 0xE2 reports them; names from the S2719DGF manual, RTS
+            // confirmed against Dell Display Manager, the rest by exclusion.
+            Add(DellPreset, 0x00, "Standard", 0x22, "FPS", 0x20, "RTS", 0x21, "RPG",
+                            0x04, "Game 1", 0x1E, "Game 2", 0x1F, "Game 3", 0x1D, "ComfortView",
+                            0x0E, "Warm", 0x12, "Cool", 0x14, "Custom Color");
 
             Name(0x02, "new control value");       Name(0x04, "restore factory defaults");
             Name(0x05, "restore brightness/contrast"); Name(0x06, "restore geometry");

@@ -19,8 +19,10 @@ namespace Deskside
         public string Key = "";
         public string Name = "";
         public Dictionary<byte, int> Values = new Dictionary<byte, int>();
+        /// <summary>Desktop orientation (see DisplayInfo.SetOrientation), -1 when not saved.</summary>
+        public int Orientation = -1;
 
-        public bool IsEmpty { get { return Values.Count == 0; } }
+        public bool IsEmpty { get { return Values.Count == 0 && Orientation < 0; } }
     }
 
     public static class SettingsStore
@@ -173,6 +175,13 @@ namespace Deskside
             foreach (KeyValuePair<string, string> kv in rows)
             {
                 if (string.Equals(kv.Key, "name", StringComparison.OrdinalIgnoreCase)) { p.Name = kv.Value; continue; }
+                if (string.Equals(kv.Key, "orientation", StringComparison.OrdinalIgnoreCase))
+                {
+                    int o;
+                    if (int.TryParse(kv.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out o) && o >= 0 && o <= 3)
+                        p.Orientation = o;
+                    continue;
+                }
                 if (!kv.Key.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
@@ -192,6 +201,9 @@ namespace Deskside
             List<KeyValuePair<string, string>> rows = new List<KeyValuePair<string, string>>();
             if (!string.IsNullOrEmpty(profile.Name))
                 rows.Add(new KeyValuePair<string, string>("name", profile.Name));
+            if (profile.Orientation >= 0)
+                rows.Add(new KeyValuePair<string, string>("orientation",
+                    profile.Orientation.ToString(CultureInfo.InvariantCulture)));
             foreach (KeyValuePair<byte, int> v in profile.Values)
                 rows.Add(new KeyValuePair<string, string>(
                     string.Format("0x{0:X2}", v.Key), v.Value.ToString(CultureInfo.InvariantCulture)));

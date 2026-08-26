@@ -11,6 +11,8 @@ namespace Deskside
     {
         public string Device = "";
         public int Width, Height, Frequency;
+        /// <summary>0 landscape, 1 portrait (90), 2 landscape flipped (180), 3 portrait flipped (270).</summary>
+        public int Orientation;
         /// <summary>Highest rate Windows offers at this resolution.</summary>
         public int MaxFrequency;
         /// <summary>Every rate available at this resolution.</summary>
@@ -102,6 +104,7 @@ namespace Deskside
         static extern int ChangeDisplaySettingsExW(string device, ref DEVMODE dm, IntPtr hwnd, uint flags, IntPtr param);
 
         const uint DM_PELSWIDTH = 0x00080000, DM_PELSHEIGHT = 0x00100000, DM_DISPLAYFREQUENCY = 0x00400000;
+        const uint DM_DISPLAYORIENTATION = 0x00000080;
         const uint CDS_UPDATEREGISTRY = 0x00000001;
 
         /// <summary>
@@ -155,7 +158,35 @@ namespace Deskside
             dm.dmDisplayFrequency = (uint)hz;
             dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
 
-            int r = ChangeDisplaySettingsExW(device, ref dm, IntPtr.Zero, CDS_UPDATEREGISTRY, IntPtr.Zero);
+            return Describe(ChangeDisplaySettingsExW(device, ref dm, IntPtr.Zero, CDS_UPDATEREGISTRY, IntPtr.Zero));
+        }
+
+        /// <summary>
+        /// Rotates the desktop on that output: 0 landscape, 1 portrait, 2
+        /// landscape flipped, 3 portrait flipped — the four entries of the
+        /// Windows display settings. Not a monitor feature: the panel has no
+        /// rotation register (MCCS 0xAA only reports it), Dell Display Manager
+        /// does exactly this call. Width and height swap when the axis turns,
+        /// or Windows rejects the mode.
+        /// </summary>
+        public static string SetOrientation(string device, int orientation)
+        {
+            DEVMODE cur = NewDevMode();
+            if (!EnumDisplaySettingsW(device, ENUM_CURRENT_SETTINGS, ref cur)) return L.T("mode not supported");
+
+            DEVMODE dm = NewDevMode();
+            bool wasSideways = (cur.dmDisplayOrientation % 2) == 1;
+            bool willBeSideways = (orientation % 2) == 1;
+            dm.dmPelsWidth = wasSideways == willBeSideways ? cur.dmPelsWidth : cur.dmPelsHeight;
+            dm.dmPelsHeight = wasSideways == willBeSideways ? cur.dmPelsHeight : cur.dmPelsWidth;
+            dm.dmDisplayOrientation = (uint)orientation;
+            dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYORIENTATION;
+
+            return Describe(ChangeDisplaySettingsExW(device, ref dm, IntPtr.Zero, CDS_UPDATEREGISTRY, IntPtr.Zero));
+        }
+
+        static string Describe(int r)
+        {
             switch (r)
             {
                 case 0:  return null;                     // done
@@ -178,6 +209,7 @@ namespace Deskside
             result.Width = (int)cur.dmPelsWidth;
             result.Height = (int)cur.dmPelsHeight;
             result.Frequency = (int)cur.dmDisplayFrequency;
+            result.Orientation = (int)cur.dmDisplayOrientation;
             result.MaxFrequency = result.Frequency;
 
             for (int i = 0; ; i++)

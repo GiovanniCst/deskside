@@ -44,8 +44,9 @@ Deskside notices which keyboard is attached and puts the right layout back.
 
 **Monitor.** Brightness, contrast, volume, colour temperature, sharpness, RGB
 gain and black level, input source, colour preset, scaling, mute, OSD language,
-power, factory resets. Refresh rate too, though that one goes through Windows
-rather than DDC/CI.
+power, factory resets. On Dell panels, the OSD preset modes too (Standard, FPS,
+RTS, RPG, Game 1–3, ComfortView, Warm, Cool, Custom Color). Refresh rate and
+orientation as well, though those two go through Windows rather than DDC/CI.
 
 **Profiles.** Save your settings as the defaults for *that* monitor, keyed by its
 PnP id. Plug a different one in and Deskside recognises it and applies the right
@@ -174,6 +175,18 @@ when the probe ends: if it does not match, someone else is on the bus, the probe
 is redone, and after three tries Deskside says so rather than show a panel built
 from someone else's answers.
 
+**And a control can be read on one code and set on another.** That Dell reports
+its OSD preset (Standard, FPS, Game 1…) on vendor code `0xE2`, which it declares
+with all eleven values — and writes to it are accepted and ignored. Sniffing
+Dell's own manager (`tools\Sniff-Ddc.py` hooks its DDC/CI calls) showed no
+secret channel, just three other registers: Standard and Game 1 go through the
+standard Display Application code, the game modes and ComfortView through vendor
+`0xF0`, Warm, Cool and Custom through the standard colour preset. Deskside reads
+`0xE2`, writes the register the choice calls for, and verifies on `0xE2` again.
+Response Time, Dark Stabilizer and Game Enhance Mode, on the other hand, move no
+code at all when changed from the OSD — they are simply not on the bus, which
+is why Dell's manager does not offer them either.
+
 **One more thing that trips up dropdowns.** On non-continuous codes the value
 lives in the low byte; the high byte is reserved, and some monitors fill it in
 anyway. That Dell answers `0x1212` for HDMI 2 — the right answer, `0x12`, sent
@@ -279,8 +292,10 @@ Deskside riconosce quale tastiera è collegata e rimette il layout giusto.
 
 **Monitor.** Luminosità, contrasto, volume, temperatura colore, nitidezza,
 guadagno e livello del nero RGB, ingresso, preset colore, scalatura, muto, lingua
-dell'OSD, spegnimento, ripristini di fabbrica. Anche la frequenza di
-aggiornamento, che però passa da Windows e non dal DDC/CI.
+dell'OSD, spegnimento, ripristini di fabbrica. Sui Dell anche i preset dell'OSD
+(Standard, FPS, RTS, RPG, Game 1–3, ComfortView, Caldo, Freddo, Colore
+personalizzato). E frequenza di aggiornamento e orientamento, che però passano
+da Windows e non dal DDC/CI.
 
 **Profili.** Salvi le impostazioni come predefinite di *quel* monitor, sotto il
 suo codice PnP. Ne colleghi un altro e Deskside lo riconosce e applica il profilo
@@ -411,6 +426,18 @@ precedente» e viene promosso. Siccome l'eco è per definizione l'ultima rispost
 valida, a fine sondaggio la sentinella viene riletta: se non coincide, qualcuno
 è sul bus, il sondaggio si ripete, e dopo tre tentativi Deskside lo dice invece
 di mostrare un pannello costruito sulle risposte di un altro.
+
+**E un controllo si può leggere su un codice e impostare su un altro.** Quel
+Dell riporta il preset dell'OSD (Standard, FPS, Game 1…) sul codice vendor
+`0xE2`, che dichiara con tutti gli undici valori — e le scritture le accetta e
+le ignora. Sniffando il manager di Dell (`tools\Sniff-Ddc.py` aggancia le sue
+chiamate DDC/CI) non è uscito nessun canale segreto, solo tre altri registri:
+Standard e Game 1 passano dal codice standard Display Application, le modalità
+gioco e ComfortView dal vendor `0xF0`, Caldo, Freddo e Personalizzato dal preset
+colore standard. Deskside legge `0xE2`, scrive il registro che la scelta
+richiede, e verifica di nuovo su `0xE2`. Response Time, Dark Stabilizer e Game
+Enhance Mode invece non muovono nessun codice quando li cambi dall'OSD: non
+sono sul bus, ed è per questo che nemmeno il manager di Dell li offre.
 
 **Un'altra cosa che svuota gli elenchi.** Sui codici non continui il valore sta
 nel byte basso; il byte alto è riservato, e c'è chi lo riempie lo stesso. Quel

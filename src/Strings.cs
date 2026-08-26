@@ -104,6 +104,18 @@ namespace Deskside
             a("Audio", "Audio");
             a("OSD language", "Lingua OSD");
             a("Refresh rate", "Frequenza");
+            a("Preset", "Preset");
+            a("Orientation", "Orientamento");
+            a("Landscape", "Orizzontale");
+            a("Portrait", "Verticale");
+            a("Landscape (flipped)", "Orizzontale (capovolto)");
+            a("Portrait (flipped)", "Verticale (capovolto)");
+            a("Orientation: {0}", "Orientamento: {0}");
+            a("Rotation refused\r\n{0}", "Rotazione rifiutata\r\n{0}");
+            // Dell preset names, as Dell Display Manager shows them in Italian
+            a("Warm", "Caldo");
+            a("Cool", "Freddo");
+            a("Custom Color", "Colore personalizzato");
 
             // --- values a control can take ---
             a("user", "utente");
