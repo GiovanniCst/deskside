@@ -9,8 +9,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("Monitor and keyboard-layout control for docked Windows laptops")]
 [assembly: AssemblyCompany("Giovanni J. Costantini")]
 [assembly: AssemblyCopyright("Copyright © 2026 Giovanni J. Costantini. Apache License 2.0.")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 [assembly: ComVisible(false)]
 
 namespace Deskside

@@ -74,12 +74,17 @@ anything that is not Italian. Pin it from *More → Language*.
 
 | Keys | Action |
 |---|---|
-| `Ctrl+Alt+Up` / `Down` | brightness ±5 |
-| `Ctrl+Shift+Alt+Up` / `Down` | contrast ±5 |
-| `Ctrl+Alt+Right` / `Left` | volume ±5 |
-| `Ctrl+Alt+M` | mute |
-| `Ctrl+Alt+I` | next input |
-| `Ctrl+Alt+PageDown` | open the panel |
+| `Ctrl+Shift+Alt+Up` / `Down` | brightness ±5 |
+| `Ctrl+Shift+Alt+PageUp` / `PageDown` | contrast ±5 |
+| `Ctrl+Shift+Alt+Right` / `Left` | volume ±5 |
+| `Ctrl+Shift+Alt+End` | mute |
+| `Ctrl+Shift+Alt+Insert` | next input |
+| `Ctrl+Shift+Alt+Home` | open the panel |
+
+Three modifiers and never a letter, on purpose: AltGr is Ctrl+Alt on Windows, so
+a `Ctrl+Alt+letter` shortcut swallows the accented letters of many layouts
+(`AltGr+I` is `í` on the UK one) and collides with the `Ctrl+Alt` bindings of
+terminals and editors. None of these chords types a character.
 
 ---
 
@@ -322,12 +327,17 @@ non è italiano. La fissi da *Altro → Lingua*.
 
 | Tasti | Effetto |
 |---|---|
-| `Ctrl+Alt+Su` / `Giù` | luminosità ±5 |
-| `Ctrl+Shift+Alt+Su` / `Giù` | contrasto ±5 |
-| `Ctrl+Alt+Destra` / `Sinistra` | volume ±5 |
-| `Ctrl+Alt+M` | muto |
-| `Ctrl+Alt+I` | ingresso successivo |
-| `Ctrl+Alt+PagGiù` | apre il pannello |
+| `Ctrl+Shift+Alt+Su` / `Giù` | luminosità ±5 |
+| `Ctrl+Shift+Alt+PagSu` / `PagGiù` | contrasto ±5 |
+| `Ctrl+Shift+Alt+Destra` / `Sinistra` | volume ±5 |
+| `Ctrl+Shift+Alt+Fine` | muto |
+| `Ctrl+Shift+Alt+Ins` | ingresso successivo |
+| `Ctrl+Shift+Alt+Home` | apre il pannello |
+
+Tre modificatori e mai una lettera, di proposito: su Windows AltGr è Ctrl+Alt,
+quindi una scorciatoia `Ctrl+Alt+lettera` si mangia le lettere accentate di molti
+layout (`AltGr+I` è `í` su quello UK) e si scontra con i `Ctrl+Alt` di terminali
+ed editor. Con queste combinazioni non si scrive nessun carattere.
 
 ---
 

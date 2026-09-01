@@ -15,3 +15,7 @@ desktop.ini
 .vscode/
 .idea/
 tools/Sniff-Ddc.log
+
+# Working notes, never published
+ROADBLOCK*.md
+archived/

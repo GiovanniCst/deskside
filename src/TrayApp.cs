@@ -1424,21 +1424,26 @@ namespace Deskside
         }
 
         // ---------------------------------------------------------- hotkeys --
+        // Three modifiers plus a navigation key, never a letter: AltGr is
+        // Ctrl+Alt on Windows, so Ctrl+Alt+<letter> swallows accented letters on
+        // many layouts (AltGr+I is "í" on the UK one) and collides with the
+        // Ctrl+Alt bindings terminals and editors rely on.
         void RegisterHotkeys()
         {
             const uint ALT = 1, CTRL = 2, SHIFT = 4;
             const uint VK_UP = 0x26, VK_DOWN = 0x28, VK_LEFT = 0x25, VK_RIGHT = 0x27,
-                       VK_M = 0x4D, VK_I = 0x49, VK_NEXT = 0x22;
+                       VK_PRIOR = 0x21, VK_NEXT = 0x22, VK_END = 0x23, VK_HOME = 0x24, VK_INSERT = 0x2D;
+            const uint ALL = CTRL | SHIFT | ALT;
 
-            Add(CTRL | ALT, VK_UP, "Ctrl+Alt+Up", "brightness +5", delegate { Nudge(Vcp.Brightness, Step); });
-            Add(CTRL | ALT, VK_DOWN, "Ctrl+Alt+Down", "brightness -5", delegate { Nudge(Vcp.Brightness, -Step); });
-            Add(CTRL | ALT | SHIFT, VK_UP, "Ctrl+Shift+Alt+Up", "contrast +5", delegate { Nudge(Vcp.Contrast, Step); });
-            Add(CTRL | ALT | SHIFT, VK_DOWN, "Ctrl+Shift+Alt+Down", "contrast -5", delegate { Nudge(Vcp.Contrast, -Step); });
-            Add(CTRL | ALT, VK_RIGHT, "Ctrl+Alt+Right", "volume +5", delegate { Nudge(Vcp.Volume, Step); });
-            Add(CTRL | ALT, VK_LEFT, "Ctrl+Alt+Left", "volume -5", delegate { Nudge(Vcp.Volume, -Step); });
-            Add(CTRL | ALT, VK_M, "Ctrl+Alt+M", "mute on/off", delegate { ToggleMute(); });
-            Add(CTRL | ALT, VK_I, "Ctrl+Alt+I", "next input", delegate { NextInput(); });
-            Add(CTRL | ALT, VK_NEXT, "Ctrl+Alt+PageDown", "open the panel", delegate { TogglePanel(); });
+            Add(ALL, VK_UP, "Ctrl+Shift+Alt+Up", "brightness +5", delegate { Nudge(Vcp.Brightness, Step); });
+            Add(ALL, VK_DOWN, "Ctrl+Shift+Alt+Down", "brightness -5", delegate { Nudge(Vcp.Brightness, -Step); });
+            Add(ALL, VK_PRIOR, "Ctrl+Shift+Alt+PageUp", "contrast +5", delegate { Nudge(Vcp.Contrast, Step); });
+            Add(ALL, VK_NEXT, "Ctrl+Shift+Alt+PageDown", "contrast -5", delegate { Nudge(Vcp.Contrast, -Step); });
+            Add(ALL, VK_RIGHT, "Ctrl+Shift+Alt+Right", "volume +5", delegate { Nudge(Vcp.Volume, Step); });
+            Add(ALL, VK_LEFT, "Ctrl+Shift+Alt+Left", "volume -5", delegate { Nudge(Vcp.Volume, -Step); });
+            Add(ALL, VK_END, "Ctrl+Shift+Alt+End", "mute on/off", delegate { ToggleMute(); });
+            Add(ALL, VK_INSERT, "Ctrl+Shift+Alt+Insert", "next input", delegate { NextInput(); });
+            Add(ALL, VK_HOME, "Ctrl+Shift+Alt+Home", "open the panel", delegate { TogglePanel(); });
         }
 
         void Add(uint mods, uint vk, string keys, string description, Action a)
